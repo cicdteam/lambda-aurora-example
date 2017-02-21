@@ -1,0 +1,121 @@
+#!/bin/bash
+
+exitcode=0
+curdir=$(pwd)
+curpath=$(dirname $0)
+terraform_bin='.tfbin'
+
+[ -f $(dirname $0)/params ] && source $(dirname $0)/params
+
+die () {
+    echo; echo -e "ERROR: $1"; echo; cd $curdir; exit 1
+}
+
+usage () {
+    echo
+    echo "Usage: $(basename $0) <command>"
+    cat <<-EOT
+
+Commands:
+
+    plan	check what should be deployed
+    deploy	create AWS resources or deploy changes
+    destroy	destroy AWS resources totally (be carefull, no roll back)
+
+EOT
+}
+
+check_params () {
+    param_list=(region aws_access_key_id aws_secret_access_key terraform_ver)
+    local errors=0
+    for i in "${param_list[@]}"; do
+        if [ -z "${!i}" ]; then echo "Please set parametr \"$i\" in params file"; errors=1; fi
+    done
+    if [ $errors -ne 0 ]; then die "Check your params file"; fi
+    export AWS_ACCESS_KEY_ID=$aws_access_key_id
+    export AWS_SECRET_ACCESS_KEY=$aws_secret_access_key
+}
+
+check_utils () {
+    [ $(uname) != 'Linux' ] && die "Sorry, you must use Linux to run this srcipt"
+    [ -z $(which zip) ]   && die "Zip not found! Please install it by \033[1;37msudo apt-get install zip\033[0m"
+
+    if [ ! -f $curpath/$terraform_bin/terraform ]; then
+        echo 'Install terraform locally'
+        mkdir -p $curpath/$terraform_bin
+        curl -sSL https://releases.hashicorp.com/terraform/${terraform_ver}/terraform_${terraform_ver}_linux_amd64.zip -o $curpath/$terraform_bin/tf.zip
+        unzip -qq $curpath/$terraform_bin/tf.zip -d $curpath/$terraform_bin
+        rm -f $curpath/$terraform_bin/tf.zip
+    fi
+
+    local tf_cur_ver
+    tf_cur_ver=`$curpath/$terraform_bin/terraform version | grep -o 'Terraform v\([0-9]*\.\)\{2\}[0-9]*' | grep -o '\([0-9]*\.\)\{2\}[0-9]*'`
+
+    if [ "$tf_cur_ver" != "$terraform_ver" ]; then
+        echo 'Update terraform locally'
+        curl -sSL https://releases.hashicorp.com/terraform/${terraform_ver}/terraform_${terraform_ver}_linux_amd64.zip -o $curpath/$terraform_bin/tf.zip
+        unzip -qq -o $curpath/$terraform_bin/tf.zip -d $curpath/$terraform_bin
+        rm -f $curpath/$terraform_bin/tf.zip
+    fi
+}
+
+# Plan resources
+#
+plan () {
+    cd $curpath/config/
+    $(pwd)/../$terraform_bin/terraform get || exitcode=$?
+    $(pwd)/../$terraform_bin/terraform plan \
+        -var region=$region \
+        || exitcode=$?
+    if [ $exitcode -ne 0 ]; then die "terraform got error while plan resources"; fi
+    cd $curdir
+}
+
+# Deploy resources
+#
+deploy () {
+    cd $curpath/config/
+    $(pwd)/../$terraform_bin/terraform get || exitcode=$?
+    $(pwd)/../$terraform_bin/terraform apply \
+        -var region=$region \
+        || exitcode=$?
+    if [ $exitcode -ne 0 ]; then die "terraform got error while deploy resources"; fi
+    cd $curdir
+}
+
+# Destroy resources
+#
+destroy () {
+    cd $curpath/config/
+    $(pwd)/../$terraform_bin/terraform get || exitcode=$?
+    $(pwd)/../$terraform_bin/terraform destroy -force \
+        -var region=$region \
+        || exitcode=$?
+    if [ $exitcode -ne 0 ]; then die "terraform got error while destroy resources"; fi
+    cd $curdir
+}
+
+initiate () {
+    echo 'Ckeck params'; check_params
+    echo 'Check utils installed'; check_utils
+}
+
+# Main
+#
+case "$1" in
+    plan)
+        initiate
+        plan
+        ;;
+    deploy)
+        initiate
+        deploy
+        ;;
+    destroy)
+        initiate
+        destroy
+        ;;
+    *)
+        usage
+        ;;
+esac

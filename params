@@ -1,0 +1,21 @@
+################################
+# Project details and defaults #
+################################
+
+# AWS region where to create AWS resources
+region=us-east-1
+
+###################
+# AWS credentials #
+###################
+
+# You could set credentials here but better use environment variables exported in shell
+aws_access_key_id=$AWS_ACCESS_KEY_ID
+aws_secret_access_key=$AWS_SECRET_ACCESS_KEY
+
+#####################
+# Terrafrom details #
+#####################
+
+# Terrafrom version to use
+terraform_ver=0.8.5
